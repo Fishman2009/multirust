@@ -79,22 +79,6 @@ set_globals() {
     dist_server="${RUSTUP_DIST_SERVER-$default_dist_server}"
     using_insecure_dist_server=false
 
-    # Find downloader
-    if command -v aria2c > /dev/null 2>&1; then
-        default_downloader_cmd=aria2c
-        default_downloader_ops="-c -j 5 -x 5 -s 5 --min-split-size=1M --connect-timeout=600 --timeout=600 -m0"
-    elif command -v axel > /dev/null 2>&1; then
-        default_downloader_cmd=axel
-        default_downloader_ops="-n 5"
-    elif command -v wget > /dev/null 2>&1; then
-        default_downloader_cmd=wget
-        default_downloader_ops=""
-    elif command -v curl > /dev/null 2>&1; then
-        default_downloader_cmd=curl
-        default_downloader_ops="-# -C - -f -O"
-    fi
-    downloader_cmd=${RUSTUP_DOWNLOADER_CMD-$default_downloader_cmd}
-    downloader_ops=${RUSTUP_DOWNLOADER_OPS-$default_downloader_ops}
     # Check to see if GNUPG version 2 is installed, falling back to using version 1 by default
     gpg_exe=gpg
     if command -v gpg2 > /dev/null 2>&1; then
@@ -990,7 +974,7 @@ get_architecture() {
 	    local _ostype=apple-darwin
 	    ;;
 
-	MINGW* | MSYS*)
+	MINGW* | MSYS* | CYGWIN*)
 	    local _ostype=pc-windows-gnu
 	    ;;
 
@@ -1258,11 +1242,11 @@ download_file_and_sig() {
     fi
 
     verbose_say "downloading '$_remote_name' to '$_local_name'"
-    # Invoke curl in a way that will resume if necessary 
+    # Invoke downloader in a way that will resume if necessary
     if [ "$_quiet" = false ]; then
-	(run cd "$_local_dirname" && run $downloader_cmd $downloader_ops "$_remote_name")
+	(run cd "$_local_dirname" && run_downloader "$_remote_name" "$_quiet")
     else
-	(run cd "$_local_dirname" && run $downloader_cmd $downloader_ops "$_remote_name")
+	(run cd "$_local_dirname" && run_downloader "$_remote_name" "$_quiet")
     fi
     if [ $? != 0 ]; then
 	say_err "couldn't download '$_remote_name'"
@@ -1440,6 +1424,26 @@ assert_cmds() {
     need_cmd printf
     need_cmd touch
     need_cmd id
+}
+
+run_downloader() {
+    local download_from_url=$1
+    local _quiet=$2
+
+    if [ "$_quiet" = false ]; then
+        default_download_exe="curl -# -C - -f -O"
+    else
+        default_download_exe="curl -s -C - -f -O"
+    fi
+
+    download_exe=${RUSTUP_DOWNLOADER-$default_download_exe}
+
+    echo $download_from_url|grep -q -- "^http"
+    if [ $? -eq 0 ]; then
+        run $download_exe $download_from_url
+    else
+        run $default_download_exe $download_from_url
+    fi
 }
 
 main "$@"
